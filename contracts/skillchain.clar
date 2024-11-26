@@ -103,7 +103,13 @@
         
         (map-set Skills 
             {skill-id: skill-id, owner: new-owner}
-            (merge skill {owner: new-owner})
+            {
+                name: (get name skill),
+                description: (get description skill),
+                issuer: (get issuer skill),
+                verified-date: (get verified-date skill),
+                credential-uri: (get credential-uri skill)
+            }
         )
         
         (ok true)
