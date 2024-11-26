@@ -41,7 +41,23 @@
   )
 )
 
-;; Create a new skill credential with optional metadata
+;; Helper function to validate metadata input
+(define-private (validate-metadata 
+    (metadata (optional (string-ascii 1000)))
+) 
+    (match metadata 
+        meta-value 
+            ;; Optional additional validation rules
+            (and 
+                ;; Example: Reject metadata with potentially malicious content
+                (not (is-eq meta-value ""))  ;; Prevent empty metadata
+                (< (len meta-value) u1000)   ;; Ensure length doesn't exceed limit
+            )
+        true  ;; If no metadata is provided, return true
+    )
+)
+
+;; Create a new skill credential with enhanced metadata validation
 (define-public (create-skill-credential 
     (skill-name (string-ascii 100))
     (description (string-ascii 500))
@@ -53,15 +69,18 @@
             (current-total-skills (var-get total-skills))
             (skill-id (+ current-total-skills u1))
         )
-        ;; Additional checks for input validation
+        ;; Input validation for core fields
         (asserts! (> (len skill-name) u0) ERR-INVALID-INPUT)
         (asserts! (> (len description) u0) ERR-INVALID-INPUT)
         (asserts! (> (len credential-uri) u0) ERR-INVALID-INPUT)
         
+        ;; Enhanced metadata validation
+        (asserts! (validate-metadata metadata) ERR-INVALID-INPUT)
+        
         ;; Prevent exceeding maximum skill limit
         (asserts! (< current-total-skills MAX-SKILLS) ERR-MAX-SKILLS-REACHED)
         
-        ;; Map the skill
+        ;; Map the skill with validated inputs
         (map-set Skills 
             {
                 skill-id: skill-id, 
