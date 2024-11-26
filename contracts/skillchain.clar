@@ -5,6 +5,8 @@
 (define-constant ERR-NOT-AUTHORIZED (err u100))
 (define-constant ERR-SKILL-EXISTS (err u101))
 (define-constant ERR-SKILL-NOT-FOUND (err u102))
+(define-constant ERR-INVALID-INPUT (err u103))
+(define-constant ERR-TRANSFER-FAILED (err u104))
 
 ;; Skill structure
 (define-map Skills
@@ -17,12 +19,22 @@
         description: (string-ascii 500),
         issuer: principal,
         verified-date: uint,
-        credential-uri: (string-ascii 200)
+        credential-uri: (string-ascii 200),
+        revoked: bool
     }
 )
 
 ;; Track total number of skills
 (define-data-var total-skills uint u0)
+
+;; Events for skill-related actions
+(define-trait skill-events
+  (
+    (skill-created (uint principal) (response bool uint))
+    (skill-transferred (uint principal principal) (response bool uint))
+    (skill-revoked (uint principal) (response bool uint))
+  )
+)
 
 ;; Create a new skill credential
 (define-public (create-skill-credential 
@@ -34,7 +46,9 @@
         (
             (skill-id (+ (var-get total-skills) u1))
         )
-        (asserts! (not (is-eq skill-name "")) ERR-NOT-AUTHORIZED)
+        (asserts! (> (len skill-name) u0) ERR-INVALID-INPUT)
+        (asserts! (> (len description) u0) ERR-INVALID-INPUT)
+        (asserts! (> (len credential-uri) u0) ERR-INVALID-INPUT)
         
         ;; Map the skill
         (map-set Skills 
@@ -47,7 +61,8 @@
                 description: description,
                 issuer: tx-sender,
                 verified-date: block-height,
-                credential-uri: credential-uri
+                credential-uri: credential-uri,
+                revoked: false
             }
         )
         
@@ -82,6 +97,7 @@
                 ERR-SKILL-NOT-FOUND
             ))
         )
+        (asserts! (not (get revoked skill)) ERR-SKILL-NOT-FOUND)
         ;; Additional verification logic can be added here
         (ok true)
     )
@@ -99,7 +115,10 @@
                 ERR-SKILL-NOT-FOUND
             ))
         )
+        (asserts! (<= skill-id (var-get total-skills)) ERR-INVALID-INPUT)
+        (asserts! (not (is-eq new-owner tx-sender)) ERR-INVALID-INPUT)
         (asserts! (is-eq tx-sender (get issuer skill)) ERR-NOT-AUTHORIZED)
+        (asserts! (not (get revoked skill)) ERR-SKILL-NOT-FOUND)
         
         (map-set Skills 
             {skill-id: skill-id, owner: new-owner}
@@ -108,8 +127,32 @@
                 description: (get description skill),
                 issuer: (get issuer skill),
                 verified-date: (get verified-date skill),
-                credential-uri: (get credential-uri skill)
+                credential-uri: (get credential-uri skill),
+                revoked: false
             }
+        )
+        
+        (ok true)
+    )
+)
+
+;; Revoke a skill credential
+(define-public (revoke-skill-credential 
+    (skill-id uint)
+)
+    (let 
+        (
+            (skill (unwrap! 
+                (map-get? Skills {skill-id: skill-id, owner: tx-sender}) 
+                ERR-SKILL-NOT-FOUND
+            ))
+        )
+        (asserts! (<= skill-id (var-get total-skills)) ERR-INVALID-INPUT)
+        (asserts! (is-eq tx-sender (get issuer skill)) ERR-NOT-AUTHORIZED)
+        
+        (map-set Skills 
+            {skill-id: skill-id, owner: tx-sender}
+            (merge skill { revoked: true })
         )
         
         (ok true)
